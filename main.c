@@ -23,6 +23,18 @@
 #define INIT_STACK_SIZE  400
 #define BUZZ_PIN		(1<<21)
 
+#define CRYSTAL_FREQUENCY FOSC
+#define PLL_FACTOR        PLL_MUL
+#define VPBDIV_FACTOR     PBSD
+
+#define  SPI_CS   0x00008000  //<= new board, old board = 0x00800000
+
+const tU8 matrixSymbol[] = {
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,	// caly zapelniony
+0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+
+
 static tU8 proc1Stack[PROC1_STACK_SIZE];
 static tU8 proc2Stack[PROC2_STACK_SIZE];
 static tU8 proc3Stack[PROC3_STACK_SIZE];
@@ -42,7 +54,7 @@ static void proc4(void* arg);
 static void proc5(void* arg);
 static void initProc(void* arg);
 
-void testLedMatrix(void);
+//void testLedMatrix(void);
 void testLcd(void);
 //void testMotor(void);
 void testMotor(int);
@@ -229,6 +241,56 @@ static void led(int i) {
 
 }
 
+static void
+startTimer1(tU16 delayInMs)
+{
+  //initialize VIC for Timer1 interrupts
+  VICIntSelect &= ~0x20;           //Timer1 interrupt is assigned to IRQ (not FIQ)
+  VICVectAddr5  = (tU32)ledMatrix; //register ISR address
+  VICVectCntl5  = 0x25;            //enable vector interrupt for timer1
+  VICIntEnable  = 0x20;            //enable timer1 interrupt
+
+  //initialize and start Timer #0
+  T1TCR = 0x00000002;                           //disable and reset Timer1
+  T1PC  = 0x00000000;                          //no prescale of clock
+  T1MR0 = delayInMs *                           //calculate no of timer ticks
+         ((CRYSTAL_FREQUENCY * PLL_FACTOR) / (1000 * VPBDIV_FACTOR));
+  T1IR  = 0x000000ff;                           //reset all flags before enable IRQs
+  T1MCR = 0x00000003;                           //reset counter and generate IRQ on MR0 match
+  T1TCR = 0x00000001;                           //start Timer1
+}
+
+void
+testLedMatrix(int speed)
+{
+ 	tU8 cntA = 0;
+
+  PINSEL0 |= 0x00001500 ;  //Initiering av SPI
+  SPI_SPCCR = 0x08;
+  SPI_SPCR  = 0x60;
+  IODIR0 |= SPI_CS;
+
+  startTimer1(2);
+
+  for(;;)
+  {
+    cntA++;
+    if (cntA > sizeof(eaText)-speed)
+      break;
+
+#if 0
+pattern[0] = eaText[cntA+0];
+pattern[1] = eaText[cntA+1];
+pattern[2] = eaText[cntA+2];
+pattern[3] = eaText[cntA+3];
+pattern[4] = eaText[cntA+4];
+pattern[5] = eaText[cntA+5];
+pattern[6] = eaText[cntA+6];
+pattern[7] = eaText[cntA+7];
+#endif
+
+	}
+}
 /*****************************************************************************
  *
  * Description:
@@ -250,8 +312,9 @@ static void proc2(void* arg) {
 	tU32 oldMove;
 	int i = 0, j = 0, h = 0;
 	for (;;) {
+
 		//		printf("IOPIN = %d",(IOPIN));
-		//		printf("\t");
+
 		oldIOPIN = IOPIN;
 		osSleep(10);
 		if (IOPIN == 1589624063) {
@@ -280,37 +343,42 @@ static void proc2(void* arg) {
 		{
 			messageOnLCD("up", TRUE);
 
-			IODIR0	|=	BUZZ_PIN;		//Select the Buzzer pin as Output
-			IOPIN0	&= ~(BUZZ_PIN);		//Clear the Buzzer pin
-
-		    while(1)
-			{
-				IOPIN0 |= BUZZ_PIN;		//Set the Buzzer pin High
-				osSleep(25);
-				//_DelayMs(250);	  		//A Delay
-				IOPIN0 &= ~BUZZ_PIN;	//Set the Buzzer pin Low
-				//_DelayMs(250);	       	//A Delay
-				osSleep(25);
-		    }
+			if(h<8)
+				h++;
+			testLedMatrix(h);
+			led(h);
+//			IODIR0	|=	BUZZ_PIN;		//Select the Buzzer pin as Output
+//			IOPIN0	&= ~(BUZZ_PIN);		//Clear the Buzzer pin
+//
+//		    while(1)
+//			{
+//				IOPIN0 |= BUZZ_PIN;		//Set the Buzzer pin High
+//				osSleep(25);
+//				//_DelayMs(250);	  		//A Delay
+//				IOPIN0 &= ~BUZZ_PIN;	//Set the Buzzer pin Low
+//				//_DelayMs(250);	       	//A Delay
+//				osSleep(25);
+//		    }
 		}
 
 		else if (tmp == 262144) {
 			messageOnLCD("right", TRUE);
-			h--;
-			led(h);
 		} else if (tmp == 16384) {
 			messageOnLCD("button", TRUE);
 
 		} else if (tmp == 524288) {
 			messageOnLCD("left", TRUE);
-			h++;
-			led(h);
 		} else if (tmp == 65536) {
 			messageOnLCD("Center", TRUE);
 			testMotor(0);
 
 		} else if (tmp == 1048576)
 			messageOnLCD("down", TRUE);
+			if(h>0)
+				h--;
+
+			testLedMatrix(h);
+			led(h);
 		//	  }
 		//	  else
 		//	  {
@@ -332,7 +400,7 @@ static void proc2(void* arg) {
  ****************************************************************************/
 static void proc3(void* arg) {
 	//testLcd();
-	testLedMatrix();
+//	testLedMatrix();
 
 }
 
